@@ -3,22 +3,17 @@ import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-void main() {
-  runApp(const ALOSApp());
-}
+void main() => runApp(const ALOSApp());
 
 class ALOSApp extends StatelessWidget {
   const ALOSApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'The Second Set Of ALOS',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF075E54)),
-      ),
+      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.teal),
       home: const AuthWrapper(),
     );
   }
@@ -38,31 +33,18 @@ class _AuthWrapperState extends State<AuthWrapper> {
   bool _isLogin = true;
   String _error = '';
 
-  Future<void> _handleAuth() async {
+  Future<void> _submit() async {
     setState(() { _isLoading = true; _error = ''; });
     try {
       final res = _isLogin 
           ? await DwBackend.signIn(_email.text, _pass.text)
           : await DwBackend.signUp(_email.text, _pass.text, name: _name.text);
-      
-      if (res['ok'] == true) {
-        if (mounted) {
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
-        }
+      if (res['ok']) {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
       } else {
-        if (mounted) setState(() => _error = res['error'] ?? 'Auth failed');
+        setState(() => _error = res['error'] ?? 'Auth failed');
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  @override
-  void dispose() {
-    _email.dispose();
-    _pass.dispose();
-    _name.dispose();
-    super.dispose();
+    } finally { setState(() => _isLoading = false); }
   }
 
   @override
@@ -70,81 +52,63 @@ class _AuthWrapperState extends State<AuthWrapper> {
     return Scaffold(
       body: Padding(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text("The Second Set Of ALOS", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-            if (!_isLogin) TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
-            TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email')),
-            TextField(controller: _pass, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
-            if (_error.isNotEmpty) Text(_error, style: const TextStyle(color: Colors.red)),
-            const SizedBox(height: 20),
-            _isLoading ? const CircularProgressIndicator() : ElevatedButton(onPressed: _handleAuth, child: Text(_isLogin ? 'Login' : 'Register')),
-            TextButton(onPressed: () => setState(() => _isLogin = !_isLogin), child: Text(_isLogin ? 'Create account' : 'Have account? Login')),
-          ],
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(Icons.chat_bubble, size: 80, color: Colors.teal),
+          Text(_isLogin ? 'Welcome to ALOS' : 'Join ALOS', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          if (!_isLogin) TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
+          TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email')),
+          TextField(controller: _pass, decoration: const InputDecoration(labelText: 'Password'), obscureText: true),
+          if (_error.isNotEmpty) Text(_error, style: const TextStyle(color: Colors.red)),
+          const SizedBox(height: 20),
+          _isLoading ? const CircularProgressIndicator() : FilledButton(onPressed: _submit, child: Text(_isLogin ? 'Login' : 'Sign Up')),
+          TextButton(onPressed: () => setState(() => _isLogin = !_isLogin), child: Text(_isLogin ? 'Create account' : 'Have an account?')),
+        ]),
+      ),
+    );
+  }
+}
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  List<Map<String, dynamic>> _users = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUsers();
+  }
+
+  Future<void> _loadUsers() async {
+    final users = await DwBackend.users();
+    setState(() => _users = users.where((u) => u['id'] != DwBackend.userId).toList());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('ALOS Chats'), actions: [
+        IconButton(icon: const Icon(Icons.person), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()))),
+      ]),
+      body: ListView.builder(
+        itemCount: _users.length,
+        itemBuilder: (_, i) => ListTile(
+          leading: CircleAvatar(child: Text(_users[i]['name'][0])),
+          title: Text(_users[i]['name']),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(user: _users[i]))),
         ),
       ),
     );
   }
 }
 
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("ALOS Chats"), actions: [
-        IconButton(icon: const Icon(Icons.logout), onPressed: () async {
-          await DwBackend.signOut();
-          if (context.mounted) {
-            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AuthWrapper()));
-          }
-        })
-      ]),
-      body: Column(
-        children: [
-          ListTile(
-            leading: const CircleAvatar(child: Icon(Icons.group)),
-            title: const Text("ALOS Global Group"),
-            subtitle: const Text("Everyone is here"),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen(chatId: 'alos_global', title: 'ALOS Global Group'))),
-          ),
-          const Divider(),
-          Expanded(
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: DwBackend.users(),
-              builder: (ctx, snap) {
-                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                return ListView.builder(
-                  itemCount: snap.data!.length,
-                  itemBuilder: (ctx, i) {
-                    final u = snap.data![i];
-                    if (u['id'] == DwBackend.userId) return const SizedBox.shrink();
-                    return ListTile(
-                      title: Text(u['name']),
-                      onTap: () async {
-                        final id = await DwBackend.chatIdWith(u['id']);
-                        if (context.mounted) {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(chatId: id, title: u['name'])));
-                        }
-                      },
-                    );
-                  },
-                );
-              },
-            ),
-          )
-        ],
-      ),
-    );
-  }
-}
-
 class ChatScreen extends StatefulWidget {
-  final String chatId;
-  final String title;
-  const ChatScreen({super.key, required this.chatId, required this.title});
+  final Map<String, dynamic> user;
+  const ChatScreen({super.key, required this.user});
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
@@ -152,68 +116,83 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final _msg = TextEditingController();
   List<Map<String, dynamic>> _messages = [];
+  late String _chatId;
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _fetch();
+    _chatId = DwBackend.chatIdWith(widget.user['id']);
     _timer = Timer.periodic(const Duration(seconds: 3), (_) => _fetch());
+    _fetch();
   }
 
   Future<void> _fetch() async {
-    final msgs = await DwBackend.query('messages', where: {'chat_id': widget.chatId});
+    final msgs = await DwBackend.query('messages', where: {'chat_id': _chatId});
     if (mounted) setState(() => _messages = msgs);
+  }
+
+  Future<void> _send() async {
+    if (_msg.text.isEmpty) return;
+    await DwBackend.create('messages', {'chat_id': _chatId, 'text': _msg.text, 'sender_name': DwBackend.userName}, shared: true);
+    _msg.clear();
+    _fetch();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    _msg.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              reverse: true,
-              itemCount: _messages.length,
-              itemBuilder: (ctx, i) {
-                final m = _messages.reversed.toList()[i];
-                final isMe = m['owner_id'] == DwBackend.userId;
-                return Align(
-                  alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Card(
-                    color: isMe ? Colors.green[100] : Colors.white,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Text(m['text']),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              children: [
-                Expanded(child: TextField(controller: _msg)),
-                IconButton(icon: const Icon(Icons.send), onPressed: () async {
-                  await DwBackend.create('messages', {'chat_id': widget.chatId, 'text': _msg.text, 'sender_name': DwBackend.userName}, shared: true);
-                  _msg.clear();
-                  _fetch();
-                })
-              ],
-            ),
-          )
-        ],
+      appBar: AppBar(
+        title: Row(children: [CircleAvatar(child: Text(widget.user['name'][0])), const SizedBox(width: 10), Text(widget.user['name'])]),
+        actions: [IconButton(icon: const Icon(Icons.video_call), onPressed: () {})],
       ),
+      body: Column(children: [
+        Expanded(child: ListView.builder(
+          itemCount: _messages.length,
+          itemBuilder: (_, i) => Align(
+            alignment: _messages[i]['owner_id'] == DwBackend.userId ? Alignment.centerRight : Alignment.centerLeft,
+            child: Card(child: Padding(padding: const EdgeInsets.all(8), child: Text(_messages[i]['text']))),
+          ),
+        )),
+        Padding(padding: const EdgeInsets.all(8), child: Row(children: [
+          Expanded(child: TextField(controller: _msg, decoration: const InputDecoration(hintText: 'Message...'))),
+          IconButton(icon: const Icon(Icons.send), onPressed: _send)
+        ])),
+      ]),
+    );
+  }
+}
+
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({super.key});
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final _name = TextEditingController(text: DwBackend.userName);
+  final _bio = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Profile')),
+      body: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+        TextField(controller: _name, decoration: const InputDecoration(labelText: 'Display Name')),
+        TextField(controller: _bio, decoration: const InputDecoration(labelText: 'Bio')),
+        const SizedBox(height: 20),
+        FilledButton(onPressed: () async {
+          await DwBackend.updateProfile(name: _name.text, bio: _bio.text);
+          Navigator.pop(context);
+        }, child: const Text('Save')),
+        TextButton(onPressed: () { DwBackend.signOut(); Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const AuthWrapper()), (r) => false); }, child: const Text('Sign Out', style: TextStyle(color: Colors.red))),
+      ])),
     );
   }
 }
