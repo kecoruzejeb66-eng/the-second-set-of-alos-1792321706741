@@ -1,14 +1,19 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
-dependencies:
-  flutter:
-    sdk: flutter
-  supabase_flutter: ^2.0.0 # Or latest version
-  shared_preferences: ^2.2.0
-  cached_network_image: ^3.3.0
-  image_picker: ^1.0.0
-  record: ^5.0.0 # For voice recording layout
+
+// ---------------------------------------------------------------------------
+// Built-in backend — accounts and data API, provided by Danger World Builder.
+// Do not edit or redefine this class; use it from your screens.
+// ---------------------------------------------------------------------------
+
+
+
+// ---------------------------------------------------------------------------
+// Built-in device features — installed apps, home screen, on-device storage.
+// Do not edit or redefine this class; use it from your screens.
+// ---------------------------------------------------------------------------
+
 
 // ---------------------------------------------------------------------------
 // Built-in backend — accounts and data API, provided by Danger World Builder.
